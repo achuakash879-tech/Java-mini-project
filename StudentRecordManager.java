@@ -1,139 +1,201 @@
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.*;
-import java.util.ArrayList;
+import java.sql.*;
 
+public class CollegeRecordManager extends JFrame {
 
+    private JTextField rollField, nameField, deptField, marksField;
+    private JTextArea displayArea;
+    private Connection con;
 
-public class StudentRecordManager extends JFrame {
+    public CollegeRecordManager() {
 
-    abstract class Person {
-        protected String name;
-        public abstract String displayDetails();
-    }
+        con = DBConnection.getConnection();
 
-    class Student extends Person {
-        private int rollNo;
-        private String department;
-        private int marks;
-
-        public Student(int rollNo, String name, String department, int marks) {
-            this.rollNo = rollNo;
-            this.name = name;
-            this.department = department;
-            this.marks = marks;
+        if (con == null) {
+            JOptionPane.showMessageDialog(this, "Database Connection Failed!");
+            System.exit(0);
         }
 
-        public int getRollNo() {
-            return rollNo;
-        }
+        setTitle("College Record Manager");
+        setSize(650, 500);
+        setLayout(new BorderLayout());
 
-        @Override
-        public String displayDetails() {
-            return "Roll: " + rollNo +
-                   " | Name: " + name +
-                   " | Dept: " + department +
-                   " | Marks: " + marks;
-        }
-    }
+        // ===== INPUT PANEL =====
+        JPanel inputPanel = new JPanel(new GridLayout(2, 4, 10, 10));
 
-    class SaveThread extends Thread {
-        public void run() {
-            try {
-                Thread.sleep(1000); // simulate background save
-                System.out.println("Data saved in background thread");
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        }
-    }
+        rollField = new JTextField();
+        nameField = new JTextField();
+        deptField = new JTextField();
+        marksField = new JTextField();
 
-    ArrayList<Student> students = new ArrayList<>();
+        inputPanel.add(new JLabel("Roll No"));
+        inputPanel.add(new JLabel("Name"));
+        inputPanel.add(new JLabel("Department"));
+        inputPanel.add(new JLabel("Marks"));
 
-    JTextField rollField, nameField, deptField, marksField;
-    JTextArea displayArea;
+        inputPanel.add(rollField);
+        inputPanel.add(nameField);
+        inputPanel.add(deptField);
+        inputPanel.add(marksField);
 
-    public StudentRecordManager() {
+        add(inputPanel, BorderLayout.NORTH);
 
-        setTitle("Student Record Manager");
-        setSize(500, 500);
-        setLayout(new FlowLayout());
-
-        rollField = new JTextField(10);
-        nameField = new JTextField(10);
-        deptField = new JTextField(10);
-        marksField = new JTextField(10);
-
-        displayArea = new JTextArea(12, 40);
+        // ===== DISPLAY AREA =====
+        displayArea = new JTextArea();
         displayArea.setEditable(false);
+        add(new JScrollPane(displayArea), BorderLayout.CENTER);
 
-        JButton addBtn = new JButton("Add Student");
-        JButton viewBtn = new JButton("View All");
+        // ===== BUTTON PANEL =====
+        JPanel buttonPanel = new JPanel();
 
-        add(new JLabel("Roll No:"));
-        add(rollField);
+        JButton addBtn = new JButton("Add");
+        JButton updateBtn = new JButton("Update");
+        JButton deleteBtn = new JButton("Delete");
+        JButton viewBtn = new JButton("View");
 
-        add(new JLabel("Name:"));
-        add(nameField);
+        buttonPanel.add(addBtn);
+        buttonPanel.add(updateBtn);
+        buttonPanel.add(deleteBtn);
+        buttonPanel.add(viewBtn);
 
-        add(new JLabel("Department:"));
-        add(deptField);
+        add(buttonPanel, BorderLayout.SOUTH);
 
-        add(new JLabel("Marks:"));
-        add(marksField);
+        // ===== BUTTON ACTIONS =====
 
-        add(addBtn);
-        add(viewBtn);
-
-        add(new JScrollPane(displayArea));
-
-        addBtn.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-
-                try {
-                    int roll = Integer.parseInt(rollField.getText());
-                    int marks = Integer.parseInt(marksField.getText());
-                    String name = nameField.getText();
-                    String dept = deptField.getText();
-
-                    if (name.isEmpty() || dept.isEmpty()) {
-                        throw new Exception("Fields cannot be empty");
-                    }
-
-                    Student s = new Student(roll, name, dept, marks);
-                    students.add(s);
-
-                    new SaveThread().start(); // Multithreading
-
-                    JOptionPane.showMessageDialog(null, "Student Added Successfully");
-
-                    rollField.setText("");
-                    nameField.setText("");
-                    deptField.setText("");
-                    marksField.setText("");
-
-                } catch (NumberFormatException ex) {
-                    JOptionPane.showMessageDialog(null, "Roll No and Marks must be numbers");
-                } catch (Exception ex) {
-                    JOptionPane.showMessageDialog(null, ex.getMessage());
-                }
-            }
-        });
-
-        viewBtn.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                displayArea.setText("");
-                for (Student s : students) {
-                    displayArea.append(s.displayDetails() + "\n");
-                }
-            }
-        });
+        addBtn.addActionListener(e -> addStudent());
+        updateBtn.addActionListener(e -> updateStudent());
+        deleteBtn.addActionListener(e -> deleteStudent());
+        viewBtn.addActionListener(e -> viewStudents());
 
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setVisible(true);
     }
 
+    private void addStudent() {
+        try {
+            int roll = Integer.parseInt(rollField.getText());
+            int marks = Integer.parseInt(marksField.getText());
+            String name = nameField.getText().trim();
+            String dept = deptField.getText().trim();
+
+            if (name.isEmpty() || dept.isEmpty()) {
+                JOptionPane.showMessageDialog(this, "All fields required!");
+                return;
+            }
+
+            PreparedStatement ps = con.prepareStatement(
+                    "INSERT INTO students VALUES (?, ?, ?, ?)"
+            );
+
+            ps.setInt(1, roll);
+            ps.setString(2, name);
+            ps.setString(3, dept);
+            ps.setInt(4, marks);
+
+            ps.executeUpdate();
+
+            JOptionPane.showMessageDialog(this, "Student Added Successfully!");
+            clearFields();
+
+        } catch (NumberFormatException ex) {
+            JOptionPane.showMessageDialog(this, "Roll and Marks must be numbers!");
+        } catch (SQLIntegrityConstraintViolationException ex) {
+            JOptionPane.showMessageDialog(this, "Roll number already exists!");
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            JOptionPane.showMessageDialog(this, "Database Error!");
+        }
+    }
+
+    private void updateStudent() {
+        try {
+            int roll = Integer.parseInt(rollField.getText());
+            int marks = Integer.parseInt(marksField.getText());
+            String name = nameField.getText().trim();
+            String dept = deptField.getText().trim();
+
+            PreparedStatement ps = con.prepareStatement(
+                    "UPDATE students SET name=?, department=?, marks=? WHERE roll_no=?"
+            );
+
+            ps.setString(1, name);
+            ps.setString(2, dept);
+            ps.setInt(3, marks);
+            ps.setInt(4, roll);
+
+            int rows = ps.executeUpdate();
+
+            if (rows > 0)
+                JOptionPane.showMessageDialog(this, "Record Updated Successfully!");
+            else
+                JOptionPane.showMessageDialog(this, "Roll Number Not Found!");
+
+            clearFields();
+
+        } catch (NumberFormatException ex) {
+            JOptionPane.showMessageDialog(this, "Roll and Marks must be numbers!");
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            JOptionPane.showMessageDialog(this, "Database Error!");
+        }
+    }
+
+    private void deleteStudent() {
+        try {
+            int roll = Integer.parseInt(rollField.getText());
+
+            PreparedStatement ps = con.prepareStatement(
+                    "DELETE FROM students WHERE roll_no=?"
+            );
+
+            ps.setInt(1, roll);
+            int rows = ps.executeUpdate();
+
+            if (rows > 0)
+                JOptionPane.showMessageDialog(this, "Record Deleted!");
+            else
+                JOptionPane.showMessageDialog(this, "Roll Number Not Found!");
+
+            clearFields();
+
+        } catch (NumberFormatException ex) {
+            JOptionPane.showMessageDialog(this, "Enter valid roll number!");
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            JOptionPane.showMessageDialog(this, "Database Error!");
+        }
+    }
+
+    private void viewStudents() {
+        try {
+            displayArea.setText("");
+
+            Statement stmt = con.createStatement();
+            ResultSet rs = stmt.executeQuery("SELECT * FROM students");
+
+            while (rs.next()) {
+                displayArea.append(
+                        rs.getInt("roll_no") + " | " +
+                        rs.getString("name") + " | " +
+                        rs.getString("department") + " | " +
+                        rs.getInt("marks") + "\n"
+                );
+            }
+
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    private void clearFields() {
+        rollField.setText("");
+        nameField.setText("");
+        deptField.setText("");
+        marksField.setText("");
+    }
+
     public static void main(String[] args) {
-        new StudentRecordManager();
+        new CollegeRecordManager();
     }
 }
